@@ -55,7 +55,6 @@ root.addEventListener('change',async function(e){if(e.target.id!=='private-impor
 async function importFromPrivateLink(){
   var h=location.hash||'';
   if(!h.startsWith('#dreams='))return;
-  history.replaceState(null,'',location.pathname+location.search);
   try{
     if(!('DecompressionStream' in window))throw Error('В браузере нет поддержки распаковки');
     var encoded=h.slice(8).replace(/-/g,'+').replace(/_/g,'/');
@@ -79,17 +78,19 @@ async function importFromPrivateLink(){
     data=original;
     localStorage.setItem('mozhno-private-imported','yes');
     persist();
+    history.replaceState(null,'',location.pathname+location.search);
     page='dreams';render();
     var notice=document.createElement('div');
     notice.setAttribute('role','status');
     notice.style.cssText='position:fixed;left:12px;right:12px;bottom:15px;z-index:100;background:#28483c;color:white;padding:16px;border-radius:14px;text-align:center;box-shadow:0 10px 35px #0005';
     notice.textContent='♡ Мечты перенесены. Новых записей: '+added+'. Всего в твоём мире: '+data.length+'.';
     document.body.appendChild(notice);
-    setTimeout(function(){notice.remove()},8500);
-  }catch(e){alert('Не удалось перенести желания: '+e.message)}
+    setTimeout(function(){notice.remove()},14000);
+  }catch(e){console.error('Private dreams import failed',e);alert('Не удалось перенести желания: '+e.message+'. Ссылка сохранена — можно повторить импорт.');}
 }
 
 render();if('serviceWorker'in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(function(){})}
 importFromPrivateLink();
+window.addEventListener('hashchange',importFromPrivateLink);
 })();
 </script></body></html>
