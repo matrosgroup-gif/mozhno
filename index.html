@@ -68,7 +68,8 @@ async function importFromPrivateLink(){
     var original=data.filter(function(d){return !String(d.id).startsWith('seed-demo-v1-')});
     original.forEach(function(d){seen.add(String(d.id))});
     var added=0;
-    imported.forEach(function(d){
+    imported.forEach(function(d,i){
+      if(Array.isArray(d))d={id:'handwritten-'+String(i+1).padStart(3,'0'),category:(cats[d[0]]||cats[0]).id,title:d[1],feeling:'',step:''};
       if(!d||typeof d.title!=='string'||!d.title.trim())return;
       var id=String(d.id||'');
       if(!id||seen.has(id))return;
