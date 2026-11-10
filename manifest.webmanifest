@@ -1,0 +1,10 @@
+{
+  "name": "МОЖНО — мой мир мечтаний",
+  "short_name": "МОЖНО",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8eee7",
+  "theme_color": "#d99586",
+  "lang": "ru"
+}
