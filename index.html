@@ -79,7 +79,7 @@ async function importFromPrivateLink(){
       var enc=await response.json();
       if(enc.version!==1)throw Error('Неизвестная версия списка');
       var key=await crypto.subtle.importKey('raw',keyBytes,'AES-GCM',false,['decrypt']);
-      var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromBase64url(enc.iv),additionalData:new TextEncoder().encode('mozhno-private-wishes-v1')},key,fromBase64url(enc.ciphertext));
+      var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromBase64url(enc.iv),additionalData:new TextEncoder().encode('mozhno-wishes-v1')},key,fromBase64url(enc.ciphertext));
       imported=await unpack(new Uint8Array(plain));
     }else{
       imported=await unpack(fromBase64url(h.slice(8)));
