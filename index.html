@@ -52,41 +52,67 @@ else if(b.hasAttribute('data-delete')){data=data.filter(function(x){return x.id!
 
 root.addEventListener('change',async function(e){if(e.target.id!=='private-import')return;var f=e.target.files&&e.target.files[0];if(!f)return;try{var obj=JSON.parse(await f.text()),rows=Array.isArray(obj)?obj:obj.dreams;if(!Array.isArray(rows)||rows.length>1000)throw Error('Неверный формат');var known=new Set(data.filter(function(x){return !String(x.id).startsWith('seed-')}).map(function(x){return x.id}));data=data.filter(function(x){return !String(x.id).startsWith('seed-')});var count=0;rows.forEach(function(d,i){if(typeof d.title!=='string'||!d.title.trim())return;var id=String(d.id||('private-'+i));if(known.has(id))return;data.push({id:id,category:cats.some(function(c){return c.id===d.category})?d.category:'self',title:d.title.trim(),feeling:String(d.feeling||''),step:String(d.step||'')});known.add(id);count++});persist();go('dreams');alert('♡ Импортировано '+count+' мечт. Все записи сохранены только в этом браузере.')}catch(err){alert('Не удалось импортировать файл мечтаний. Проверь формат JSON.')}});
 
+
 async function importFromPrivateLink(){
   var h=location.hash||'';
-  if(!h.startsWith('#dreams='))return;
+  if(!h.startsWith('#import=')&&!h.startsWith('#dreams='))return;
   try{
-    if(!('DecompressionStream' in window))throw Error('В браузере нет поддержки распаковки');
-    var encoded=h.slice(8).replace(/-/g,'+').replace(/_/g,'/');
-    var bin=atob(encoded.padEnd(Math.ceil(encoded.length/4)*4,'='));
-    var bytes=Uint8Array.from(bin,function(c){return c.charCodeAt(0)});
-    var stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-    var imported=JSON.parse(await new Response(stream).text());
-    if(!Array.isArray(imported)||imported.length>500)throw Error('Неправильный список');
-    var seen=new Set();
+    if(!('DecompressionStream' in window))throw Error('Нужен современный браузер с поддержкой распаковки');
+    function fromBase64url(s){
+      var b=atob(s.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(s.length/4)*4,'='));
+      return Uint8Array.from(b,function(c){return c.charCodeAt(0)});
+    }
+    async function unpack(bytes){
+      var reader=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+      var chunks=[],n=0;
+      while(true){var x=await reader.read();if(x.done)break;chunks.push(x.value);n+=x.value.length;if(n>2000000)throw Error('Слишком большой список')}
+      var result=new Uint8Array(n),offset=0;
+      chunks.forEach(function(c){result.set(c,offset);offset+=c.length});
+      return JSON.parse(new TextDecoder().decode(result));
+    }
+    var imported;
+    if(h.startsWith('#import=')){
+      var keyBytes=fromBase64url(h.slice(8));
+      if(keyBytes.length!==32)throw Error('Неверный личный ключ');
+      var response=await fetch('./private-wishes.enc.json',{cache:'no-store'});
+      if(!response.ok)throw Error('Зашифрованный список пока недоступен: '+response.status);
+      var enc=await response.json();
+      if(enc.version!==1)throw Error('Неизвестная версия списка');
+      var key=await crypto.subtle.importKey('raw',keyBytes,'AES-GCM',false,['decrypt']);
+      var plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromBase64url(enc.iv),additionalData:new TextEncoder().encode('mozhno-private-wishes-v1')},key,fromBase64url(enc.ciphertext));
+      imported=await unpack(new Uint8Array(plain));
+    }else{
+      imported=await unpack(fromBase64url(h.slice(8)));
+    }
+    if(!Array.isArray(imported)||imported.length!==148)throw Error('Ожидалось 148 желаний, получено '+(Array.isArray(imported)?imported.length:'неизвестно'));
     var original=data.filter(function(d){return !String(d.id).startsWith('seed-demo-v1-')});
-    original.forEach(function(d){seen.add(String(d.id))});
+    var known=new Set(original.map(function(d){return String(d.id)}));
     var added=0;
     imported.forEach(function(d,i){
       if(Array.isArray(d))d={id:'handwritten-'+String(i+1).padStart(3,'0'),category:(cats[d[0]]||cats[0]).id,title:d[1],feeling:'',step:''};
-      if(!d||typeof d.title!=='string'||!d.title.trim())return;
-      var id=String(d.id||'');
-      if(!id||seen.has(id))return;
-      original.push({id:id,category:cats.some(function(c){return c.id===d.category})?d.category:'self',title:d.title.trim(),feeling:String(d.feeling||''),step:String(d.step||'')});
-      seen.add(id);added++;
+      if(!d||typeof d.title!=='string'||!d.title.trim())throw Error('Пустое желание №'+(i+1));
+      var id=String(d.id||'handwritten-'+(i+1));
+      if(known.has(id))return;
+      original.push({id:id,category:cats.some(function(c){return c.id===d.category})?d.category:'self',
+         title:d.title.trim(),feeling:String(d.feeling||''),step:String(d.step||''),
+         sourcePage:d.sourcePage||null,sourceNumber:d.sourceNumber||null,needsReview:!!d.needsReview});
+      known.add(id);added++;
     });
     data=original;
-    localStorage.setItem('mozhno-private-imported','yes');
     persist();
+    localStorage.setItem('mozhno-private-imported','yes');
     history.replaceState(null,'',location.pathname+location.search);
     page='dreams';render();
     var notice=document.createElement('div');
     notice.setAttribute('role','status');
     notice.style.cssText='position:fixed;left:12px;right:12px;bottom:15px;z-index:100;background:#28483c;color:white;padding:16px;border-radius:14px;text-align:center;box-shadow:0 10px 35px #0005';
-    notice.textContent='♡ Мечты перенесены. Новых записей: '+added+'. Всего в твоём мире: '+data.length+'.';
+    notice.textContent='♡ Импорт завершён: '+imported.length+' желаний обработано, новых '+added+'. В твоём мире '+data.length+' мечт.';
     document.body.appendChild(notice);
-    setTimeout(function(){notice.remove()},14000);
-  }catch(e){console.error('Private dreams import failed',e);alert('Не удалось перенести желания: '+e.message+'. Ссылка сохранена — можно повторить импорт.');}
+    setTimeout(function(){notice.remove()},16000);
+  }catch(e){
+    console.error('Private dreams import failed',e);
+    alert('Не удалось перенести желания: '+e.message+'. Личная ссылка сохранена для повторного импорта.');
+  }
 }
 
 render();if('serviceWorker'in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(function(){})}
