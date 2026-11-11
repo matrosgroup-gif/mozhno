@@ -118,5 +118,49 @@ async function importFromPrivateLink(){
 render();if('serviceWorker'in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(function(){})}
 importFromPrivateLink();
 window.addEventListener('hashchange',importFromPrivateLink);
+
+async function unlockEncryptedDreams(){
+  var hash=location.hash||'';
+  if(!hash.startsWith('#unlock='))return;
+  try{
+    if(!crypto.subtle||!('DecompressionStream'in window))throw Error('Этот браузер не поддерживает безопасный перенос');
+    var base64=function(str){var z=str.replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(z.padEnd(Math.ceil(z.length/4)*4,'=')),function(c){return c.charCodeAt(0)})};
+    var rawkey=base64(hash.slice('#unlock='.length));
+    if(rawkey.length!==32)throw Error('Неверный ключ');
+    var response=await fetch('./private-dreams.enc?v=1',{cache:'no-store'});
+    if(!response.ok)throw Error('Не получилось загрузить зашифрованный список');
+    var encrypted=base64((await response.text()).trim());
+    var keyObject=await crypto.subtle.importKey('raw',rawkey,{name:'AES-GCM'},false,['decrypt']);
+    var zipped=await crypto.subtle.decrypt({name:'AES-GCM',iv:encrypted.slice(0,12),additionalData:new TextEncoder().encode('MOZHNO-private-dreams-v1')},keyObject,encrypted.slice(12));
+    var decompressed=new Blob([zipped]).stream().pipeThrough(new DecompressionStream('gzip'));
+    var entries=JSON.parse(await new Response(decompressed).text());
+    if(!Array.isArray(entries)||entries.length!==148)throw Error('Список неполный');
+    var existing=data.filter(function(d){return !String(d.id).startsWith('seed-demo-v1-')});
+    var known=new Set(existing.map(function(d){return String(d.id)}));
+    var newly=0;
+    entries.forEach(function(d){
+      if(!d||typeof d.title!=='string'||!d.title.trim()||!d.id)return;
+      if(known.has(String(d.id)))return;
+      existing.push({id:String(d.id),category:cats.some(function(c){return c.id===d.category})?d.category:'self',title:d.title.trim(),feeling:String(d.feeling||''),step:String(d.step||''),needsReview:!!d.needsReview});
+      known.add(String(d.id));newly++;
+    });
+    var importedTotal=entries.filter(function(d){return known.has(String(d.id))}).length;
+    if(importedTotal!==148)throw Error('Не все записи были сохранены');
+    data=existing;
+    persist();
+    localStorage.setItem('mozhno-private-imported','yes');
+    history.replaceState(null,'',location.pathname+location.search);
+    page='dreams';render();
+    var message=document.createElement('div');
+    message.style.cssText='position:fixed;z-index:100;bottom:18px;left:12px;right:12px;padding:18px;border-radius:15px;text-align:center;background:#294b3a;color:#fff;box-shadow:0 8px 28px #0004;font-weight:650';
+    message.setAttribute('role','status');
+    message.textContent='♡ Все 148 желаний перенесены. Добавлено новых: '+newly+'. Всего в твоём мире: '+data.length+'.';
+    document.body.appendChild(message);
+    setTimeout(function(){message.remove()},18000);
+  }catch(e){console.error('Private encrypted import error',e);alert('Перенос не завершён: '+e.message+'. Ссылка сохранена, можно повторить.')}
+}
+
+unlockEncryptedDreams();
+window.addEventListener('hashchange',unlockEncryptedDreams);
 })();
 </script></body></html>
